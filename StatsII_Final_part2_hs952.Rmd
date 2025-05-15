@@ -1,0 +1,190 @@
+---
+title: "Factors Affecting Yield (Project for final assessment for Statistical Methods II)"
+author: "Helen Solecki - hs952"
+date: "2025-05-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#loading the data
+dat <- read.csv("C:\\Users\\hs952\\Box\\Stats2\\ag_yields.csv")
+```
+
+### Introduction
+
+*Exploratory Data Analysis* 
+```{r}
+
+library(ggplot2)
+head(dat)
+str(dat)
+dim(dat)
+print(summary(dat))
+plot(dat$Fertilizer_Amount_kg_per_hectare, dat$Yield_kg_per_hectare)
+plot(dat$Sunny_Days, dat$Yield_kg_per_hectare)
+plot(dat$Soil_Quality, dat$Yield_kg_per_hectare)
+plot(dat$Rainfall_mm, dat$Yield_kg_per_hectare)
+plot(dat$Irrigation_Schedule, dat$Yield_kg_per_hectare)
+hist(dat$Yield_kg_per_hectare)
+hist(dat$Soil_Quality)
+hist(dat$Fertilizer_Amount_kg_per_hectare)
+hist(dat$Sunny_Days)
+hist(dat$Rainfall_mm)
+hist(dat$Irrigation_Schedule)
+```
+
+
+  This dataset shows crop yield in kg/hectare, along with a numeric index of soil quality, the amount of fertilizer in kg/hectare, the number of sunny days in the growing season, rainfall in mm, and the number of irrigations in the growing season. There are 6 variables and 4,000 observations. Here, I sought to assess predictors of yield, since it is such an important metric in agriculture. By identifying which factors are the most important and why, farmers can make decisions on how to prioritize their resources. Based on quick summary statistics, there do not appear to be obvious significant outliers in scatterplots, and there are possibly some linear trends that can be explored. Yield and sunny days appear to be distributed fairly normally. Irrigation schedule has a slight right skew. All data can be handled numerically. The summary() function prints and reports for us the min, max, median, 1st and 3rd quartile for each variable. For this dataset, average yield was 709.2. 
+
+```{r}
+#linear model
+library("sandwich")
+library("lmtest")
+library("lme4")
+library("lmboot")
+library("car")
+
+head(dat)
+mod_full <- lm(Yield_kg_per_hectare ~ Soil_Quality + Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(mod_full)
+#residuals vs fitted
+par(mfrow = c(1,2))
+plot(fitted.values(mod_full,rstandard(mod_full)))
+abline(h=0)
+#normal Q-Q
+qqnorm(rstandard(mod_full))
+abline(0,1,lty=2)
+#bp test for homoscedasticity
+bptest(mod_full)
+#multicollinearity
+vif(mod_full)
+#durbin watson
+durbinWatsonTest(mod_full)
+```
+### Methodology 
+
+*Assumptions verification and assumptions handling*
+
+After creating a linear model for the data, we must check that the assumptions for the model are met. The key assumptions for the linear model are: linearity, independence, homoscedasticity, normality, and low multicollinearity. 
+
+To test for linearity, I created a plot of the fitted vs residual plot. We can see that there is not a clear association between the residuals, so we can conclude that linearity is reasonable. 
+
+To test for normality, I created a Q-Q plot of the residuals. The curve does not fall completely on a straight line. I attempted to apply transformations to the data, especially to the Soil Quality and Fertilizer variables as the histograms for these variables did not appear normally distributed in the data summary. I also attempted to transform irrigation schedule since this distribution was skewed. Transformation such as log, natural log, or squaring can sometimes normalize the data. I was not able to apply a transformation that would make the Q-Q plot follow a straight line completely. That being said, the curve is not extreme. Ordinary Least Squares estimates can still be reliable but small-sample testing such as with t or F tests may be invalid or unreliable. The tests can still be performed, but we should pay extra attention to highly significant p-value and take caution when generalizing. 
+
+To statistically test for homoscedasticity I used the Bruesch-Pagan Test to determine if residuals are distributed with equal variance. With a p-value of 0.7457, we cannot reject the null hypothesis that there is homoscedasticity. Hence, it's safe to say the data is not heteroscedastic. 
+
+I also tested statistically for multicollinearity using the vif() function. With all values below 5, I can conclude that there is not multicollinearity in the dataset. 
+
+I used a durbin-watson test to statistically determine independence. With a D-W statistic of 1.98, we can conclude that there is not autocorrelation of the residuals, providing further evidence that the independence violation is not violated. 
+
+*Variable selection techniques: Forward and backward selection with BIC*
+
+```{r}
+#forward selection with BIC
+#smallest model 
+intOnly <- lm(Yield_kg_per_hectare ~ 1, data=dat)
+#largest model
+largest <- lm(Yield_kg_per_hectare ~ ., data=dat)
+out_forward_bic <- step(object = intOnly, direction = "forward", scope = formula(largest), trace = T, k = log(nrow(dat)))
+summary(out_forward_bic)
+
+
+#backward selection with BIC
+out_backward_bic <- step(object = largest, direction = "backward",
+scope = formula(largest), trace = T, k = log(nrow(dat)))
+summary(out_backward_bic)
+```
+
+
+In order to identify the strongest and simplest model to predict yield (the most parsimonious), I used two different selection techniques: forward and backward with BIC. The results of forward and backward selection with BIC generated the same result: a linear model with all included covariates, aka the full original model which takes into account soil quality, fertilizer, sunny days, rainfall, and irrigation. This model is both the most predictive and simplest. If the backward and forward selection had given different results, I would pick the one which has the smaller AIC value which would be the most parsimonious. 
+
+*Hypothesis testing*
+
+  I decided to use the full model to test the significance of one covariate within the model. Here I would like to look at the significance of the effect of soil quality after conditioning for all other covariates. I chose soil quality because this is one of the factors that can be altered with soil health practices like reduced tillage or cover cropping. Insight into how soil quality plays a role could help determine to what extent soil management practices matter in regards to yield. The null hypothesis is that soil quality is not associated with yield, and the alternative hypothesis is that soil quality is associated with yield. I used alpha level 0.05.
+
+```{r}
+
+#model to test
+mod_full <- lm(Yield_kg_per_hectare ~ Soil_Quality + Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(mod_full)
+
+```
+The t-statistic for the hypothesis test is t=9.056. The p-value is 2e-16, which is much less than 0.05. This tells us to reject the null hypothesis that there is no association between soil quality and yield. This means that there is indeed an association between soil quality and yield. 
+
+*Assessing the model and validating the model with cross validation*
+```{r}
+mod_full <- lm(Yield_kg_per_hectare ~ Soil_Quality + Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(mod_full)
+```
+  After our selection techniques and hypothesis testing, we have determined that the full model is indeed both the simplest and the best fit. RMSE is 145.7 on 3994 degrees of freedom, with a p-value of <2.2e-16. The R squared for the chosen model indicates that about 47% of the variance in Yield can be explained by the model.The value is approximately the same for multiple and adjusted R-Squared. Adjusted R-squared penalizes for overfitting, so the fact that they are the same suggests that over-fitting is not a concern here.The RMSE indicates that average error of the model is 145.7 which is reasonable considering the mean yield of 709.2. Degrees of freedom accounts the 4000 observations and subtracts the number of predictors to get to 3994. 
+
+  I sought to validate how our model might do with new data. Below, I used the glm and cv.glm functions to implement K-fold cross validation where k=5 to evaluate prediction error for the full model. The cv.glm function separates the data into K sets and the glm is fit for each group, then compared to a prediction based on the remaining set as a test set. The function outputs a delta prediction error to demonstrate the fit of the model. 
+  
+  Here, I looked at the delta output (the prediction error). The delta output here is: 21278.61 21270.15. I chose k-fold CV due to the large sample size, as LOOCV may be too computationally intense. I decided to use k-fold CV to compare again to the model where soil quality is not factored in. The delta output here was: 21682.13 21677.21. We confirmed earlier that soil quality is associated with yield; here when we test our model using k-fold CV and compare to another model without soil quality, we can see that further implied by the difference in prediction error. 
+
+```{r}
+#kfold CV for full model lab 8
+library("boot")
+cv_mod <- glm(Yield_kg_per_hectare ~ Soil_Quality + Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(cv_mod)
+err_cv <- cv.glm(dat, cv_mod, K=5)
+err_cv
+```
+
+```{r}
+#kfold CV for model without soil quality
+library("boot")
+cv_mod_nosoil <- glm(Yield_kg_per_hectare ~ Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(cv_mod_nosoil)
+err_cv <- cv.glm(dat, cv_mod_nosoil, K=5)
+err_cv
+```
+
+### Results and Discussion
+
+*Feature impacts analysis: features, confidence intervals, implications*
+
+```{r}
+mod_full <- lm(Yield_kg_per_hectare ~ Soil_Quality + Fertilizer_Amount_kg_per_hectare + Sunny_Days + Rainfall_mm + Irrigation_Schedule, data = dat)
+summary(mod_full)
+head(dat)
+confint(mod_full)
+```
+
+According to the output of the linear model, all covariates show a significant association with yield. 
+
+The interpretations would be, when all other covariates are held constant:
+When soil quality increases by 1 unit, we expect yield to increase by 1.439 bu/ha 
+When the amount of fertilizer increases by 1 kg per hectare, an increase in yield by 0.79 bu/ha
+When there is 1 more sunny day in the growing season, we expect an increase in yield by 1.59 bu/ha
+When rainfall increases by by 1 mm, we expect a decrease in yield by 0.465 bu/ha
+When there is 1 more irrigation day, we expect yield to increase by 49.28 bu/ha
+
+Taken together, we interpret that all predictors have a positive effect on the yield outcome, besides rainfall, which slightly negatively impacts yield. We can also see that the number of irrigation events in the growing season has a huge impact on yield and that the addition of one irrigation increases the end result. 
+
+When interpreting our confidence intervals, we can say:
+We are 95% confident that the true parameter for soil quality falls between 1.124 and 1.75.
+We are 95% confident that the true parameter for Fertilizer amount (kg/ha) falls between 0.727 and 0.852.
+We are 95% confident that the true parameter for Sunny days falls between 1.13 and 2.044.
+We are 95% confident that the true parameter for Rainfall falls between -0.51 and -0.419
+We are 95% confident that the true parameter for Irrigation falls between 47.3 and 51.28. 
+
+
+### Conclusion and References
+
+*conclusions and future directions*
+  
+  Overall, we can conclude here that fertilizer, sunny days, rainfall, irrigation and soil quality all play an important role in predicting yield. There is room to explore which factors play the biggest role in affecting yield, but this is also highly dependent on location and crop type. We must acknowledge that the Q-Q plot slight S curve causes us to question the normality assumption, so even with highly significant P-values, we take caution if generalizing these trend to other datasets. One other limit of this dataset is that crop type is not specified. No matter what crop the data is about, the predictors are still relevant, but more conclusions can be drawn if there are a few crop types in the dataset and these could be separated out and assessed individually. Location is also important. It is possible location information may present a problem with multicollinearity if it is tied to sunny days and rainfall, but the added regional information could be important to the model and potentially even simplify it. For example, it makes sense that rainfall would cause a decrease in yield in regions where soil has poor drainage and over-saturation is an issue. Conversely, this would not make sense in a more arid region where increased rainfall is very important. At the same time, the irrigation covariate should be explored more -- while it is not necessarily surprising that increased rainfall may slightly negatively impact yield, it is surprising that irrigation would increase yield while rainfall would not. More on this relationship and more about the background data collection should be assessed here. Perhaps in future analysis changing the irrigation variable to a binary outcome (i.e. irrigation events higher than 5 vs lower than 5) can be explored, along with more transformations in our linear model. 
+
+*sources*
+
+-Dataset downloaded and adapted (1 column removed) from kaggle at the following link:
+
+https://www.kaggle.com/code/jayrdixit/synthetic-agriculture-yeild/input
+
+-https://nayelbettache.github.io/STSCI6020.html
+
